@@ -1,0 +1,9 @@
+{
+  "name": "wavemonitor",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build:frontend": "npm --prefix frontend ci --include=dev && npm --prefix frontend run build",
+    "deploy": "npm --prefix worker ci --include=dev && npm --prefix worker run deploy"
+  }
+}

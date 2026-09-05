@@ -185,8 +185,8 @@ docker compose up --build -d
 
 1. Fork 本仓库到自己的 GitHub 账号。
 2. 点击上方按钮，或在 Cloudflare **Workers & Pages → Create application → Import a repository** 中选择 Fork。
-3. Production branch 选择 `serverless`；Root directory 填写 `worker`。
-4. Build command 填写 `npm run build:frontend`，Deploy command 填写 `npm run deploy`。
+3. Production branch 选择 `serverless`；Root directory 留空（使用仓库根目录）。
+4. Build command 填写 `npm run build:frontend`，Deploy command 填写 `npm run deploy`。根目录的 npm 脚本会分别安装并调用 `frontend/` 与 `worker/` 中的实际构建、部署命令。
 5. 保存并部署。Wrangler 会自动创建并绑定名为 `wavemonitor` 的 D1；部署命令随后应用 D1 migrations。
 6. 打开部署生成的 `workers.dev` 地址，在“初始化配置”页设置访问密码，并可同时填写 Telegram Bot Token 与 Chat ID。
 
