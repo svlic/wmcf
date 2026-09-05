@@ -8,7 +8,7 @@
     "test": "vitest run",
     "dev": "wrangler dev",
     "build:frontend": "npm --prefix ../frontend ci && npm --prefix ../frontend run build",
-    "deploy": "wrangler deploy && wrangler d1 migrations apply wavemonitor --remote",
+    "deploy": "node scripts/deploy.mjs && wrangler d1 migrations apply wavemonitor --remote",
     "d1:migrate:local": "wrangler d1 migrations apply wavemonitor --local",
     "d1:migrate:remote": "wrangler d1 migrations apply wavemonitor --remote"
   },
