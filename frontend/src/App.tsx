@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { Route, Switch, Link, useLocation } from "wouter";
 import { apiClient, ApiError } from "./api/client";
 import { InstrumentList } from "./pages/instruments/InstrumentList";
-import { InstrumentCreate } from "./pages/instruments/InstrumentCreate";
+import { InstrumentCreate } from "./pages/instruments/InstrumentForm";
 import { InstrumentEdit } from "./pages/instruments/InstrumentEdit";
 import { Dashboard } from "./pages/dashboard/Dashboard";
 import { OpsPanel } from "./pages/ops/OpsPanel";

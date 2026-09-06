@@ -9,7 +9,6 @@ from sqlmodel import Session, SQLModel, create_engine
 
 DATABASE_URL_ENV: Final[str] = "DATABASE_URL"
 LOCAL_SQLITE_DATABASE_URL: Final[str] = "sqlite:///./wavemonitor.sqlite3"
-DEFAULT_DATABASE_URL: Final[str] = LOCAL_SQLITE_DATABASE_URL
 
 
 INSTRUMENT_COLUMNS: Final[str] = """

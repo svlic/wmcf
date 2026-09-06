@@ -1,5 +1,8 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
+import { apiClient } from "../../api/client";
 import type { CreateInstrumentRequest, InstrumentWithMappings } from "../../api/client";
+import { bumpInstrumentRevision } from "../../state/instrumentRevision";
 import {
   defaultMarketTypeForProvider,
   marketTypeLabel,
@@ -280,5 +283,22 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
         </button>
       </div>
     </form>
+  );
+}
+
+export function InstrumentCreate() {
+  const [, setLocation] = useLocation();
+
+  const handleSubmit = async (data: CreateInstrumentRequest) => {
+    await apiClient.createInstrument(data);
+    bumpInstrumentRevision();
+    setLocation("/instruments");
+  };
+
+  return (
+    <InstrumentForm
+      onSubmit={handleSubmit}
+      onCancel={() => setLocation("/instruments")}
+    />
   );
 }

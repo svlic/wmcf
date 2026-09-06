@@ -3,9 +3,9 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
-from fastapi import HTTPException, status
 from sqlmodel import Session
 
+from wavemonitor_backend.api import require_id
 from wavemonitor_backend.models import DeliveryStatus, TelegramDelivery
 from wavemonitor_backend.notifier import (
     TelegramHttpFailure,
@@ -48,16 +48,9 @@ def record_telegram_delivery(
         "telegram_delivery_result status=%s message_kind=%s delivery_id=%s safe_error=%s",
         delivery.status.value,
         delivery.message_kind,
-        require_delivery_id(delivery.id),
+        require_id(delivery.id),
         delivery.safe_error or "none",
     )
     return delivery
 
 
-def require_delivery_id(value: int | None) -> int:
-    if value is None:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database row id is missing",
-        )
-    return value

@@ -37,15 +37,6 @@ def derived_support(high_water: Decimal, fixed_drawdown: Decimal) -> Decimal:
     return support
 
 
-def lift_high_water(
-    *, high_water: Decimal, fixed_drawdown: Decimal, price: Decimal
-) -> tuple[Decimal, Decimal, bool]:
-    """Return the high-water mark, trailing support, and whether the mark was raised."""
-    if price > high_water:
-        return price, derived_support(price, fixed_drawdown), True
-    return high_water, derived_support(high_water, fixed_drawdown), False
-
-
 def nearest_pair(
     supports: Sequence[Decimal],
     resistances: Sequence[Decimal],

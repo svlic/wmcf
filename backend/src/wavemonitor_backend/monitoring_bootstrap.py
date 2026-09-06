@@ -20,9 +20,7 @@ from wavemonitor_backend.monitoring import (
 from wavemonitor_backend.notifier import TelegramNotifier
 from wavemonitor_backend.settings import Settings
 from wavemonitor_backend.symbol_catalog import (
-    SymbolCatalog,
     default_binance_futures_clients,
-    default_symbol_catalog,
 )
 
 POLL_INTERVAL_SECONDS_ENV: Final[str] = "WAVEMONITOR_POLL_INTERVAL_SECONDS"
@@ -63,10 +61,6 @@ def build_adapter_registry() -> AdapterRegistry:
             (Provider.HYPERLIQUID, MarketType.PERPETUAL): HyperliquidAdapter(info_client=Info()),
         }
     )
-
-
-def build_symbol_catalog() -> SymbolCatalog:
-    return default_symbol_catalog()
 
 
 def build_monitoring_lifecycle(

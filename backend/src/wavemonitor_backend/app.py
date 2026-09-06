@@ -20,12 +20,14 @@ from wavemonitor_backend.api import (
     delete_instrument,
     get_instrument_status,
     list_instruments,
+    list_latest_prices,
     list_recent_alerts,
+    list_source_errors,
     patch_instrument_enabled,
     update_instrument,
 )
 from wavemonitor_backend.db import (
-    DEFAULT_DATABASE_URL,
+    LOCAL_SQLITE_DATABASE_URL,
     create_database_engine,
     create_schema,
     database_url_from_env,
@@ -35,7 +37,6 @@ from wavemonitor_backend.lifecycle import ImmediateTickRequester
 from wavemonitor_backend.models import AlertKind, MarketType, Provider
 from wavemonitor_backend.monitoring import RuntimeMetricsStore
 from wavemonitor_backend.monitoring_bootstrap import (
-    build_symbol_catalog,
     default_monitoring_lifecycle,
 )
 from wavemonitor_backend.notifier import (
@@ -48,7 +49,6 @@ from wavemonitor_backend.notifier import (
     message_for_kind,
     sanitize_telegram_failure,
 )
-from wavemonitor_backend.operational_api import list_latest_prices, list_source_errors
 from wavemonitor_backend.schemas import (
     AlertResponse,
     InstrumentEnabledPatch,
@@ -59,7 +59,7 @@ from wavemonitor_backend.schemas import (
     SourceErrorResponse,
 )
 from wavemonitor_backend.settings import Settings
-from wavemonitor_backend.symbol_catalog import SymbolCatalog
+from wavemonitor_backend.symbol_catalog import SymbolCatalog, default_symbol_catalog
 from wavemonitor_backend.telegram_delivery import record_telegram_delivery
 
 
@@ -168,7 +168,7 @@ class AppLifecycle(Protocol):
 @dataclass(frozen=True, slots=True)
 class AppRuntime:
     settings: Settings
-    database_url: str = DEFAULT_DATABASE_URL
+    database_url: str = LOCAL_SQLITE_DATABASE_URL
     telegram_transport: TelegramTransport | None = None
     metrics_store: RuntimeMetricsStore = field(default_factory=RuntimeMetricsStore)
     monitoring_lifecycle: AppLifecycle | None = None
@@ -205,7 +205,7 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
     def resolved_symbol_catalog() -> SymbolCatalog | None:
         if app_runtime.symbol_catalog is not None:
             return app_runtime.symbol_catalog
-        return build_symbol_catalog()
+        return default_symbol_catalog()
 
     runtime_settings = app_runtime.settings
     metrics_store = app_runtime.metrics_store

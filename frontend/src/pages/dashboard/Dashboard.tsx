@@ -5,7 +5,6 @@ import type {
   LatestPrice,
   InstrumentWithMappings,
 } from "../../api/client";
-import { usePollingRefresh } from "../../hooks/usePollingRefresh";
 import {
   getInstrumentRevision,
   subscribeInstrumentRevision,
@@ -99,11 +98,12 @@ export function Dashboard() {
     void loadData(undefined, { refresh: true });
   }, [instrumentRevision, loadData]);
 
-  const pollPrices = useCallback(() => {
-    void loadData(undefined, { refresh: true });
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      void loadData(undefined, { refresh: true });
+    }, 120_000);
+    return () => window.clearInterval(id);
   }, [loadData]);
-
-  usePollingRefresh(pollPrices, 120_000);
 
   const handleRefresh = () => {
     void loadData(undefined, { refresh: true });
