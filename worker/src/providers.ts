@@ -1,12 +1,17 @@
 import { fixed } from "./rules";
 import type { EnabledSource, MarketType, Provider } from "./types";
+const PROVIDER_TIMEOUT_MS = 10_000;
+
 
 export interface PriceResult { ok: true; price: string; path: string }
 export interface PriceError { ok: false; error: string }
 export type PollResult = PriceResult | PriceError;
 
 async function jsonFetch(url: string, init?: RequestInit): Promise<unknown> {
-  const response = await fetch(url, init);
+  const response = await fetch(url, {
+    ...init,
+    signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
+  });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return response.json();
 }

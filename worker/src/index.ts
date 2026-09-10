@@ -109,6 +109,7 @@ app.get("/api/instruments", async (context) => context.json(await listInstrument
 app.post("/api/instruments", async (context) => {
   const input = instrumentSchema.parse(await context.req.json());
   const response = await createInstrument(context.env.DB, input);
+  context.executionCtx.waitUntil(runMonitoringTick(context.env));
   return context.json(response, 201);
 });
 app.put("/api/instruments/:id", async (context) => {
@@ -117,6 +118,7 @@ app.put("/api/instruments/:id", async (context) => {
   if (row === null) return context.json({ detail: "Instrument not found" }, 404);
   const input = instrumentSchema.parse(await context.req.json());
   const response = await replaceInstrument(context.env.DB, row, input);
+  context.executionCtx.waitUntil(runMonitoringTick(context.env));
   return context.json(response);
 });
 app.patch("/api/instruments/:id", async (context) => {
@@ -125,6 +127,7 @@ app.patch("/api/instruments/:id", async (context) => {
   if (row === null) return context.json({ detail: "Instrument not found" }, 404);
   const body = enabledPatchSchema.parse(await context.req.json());
   const response = await patchInstrument(context.env.DB, row, body.enabled);
+  context.executionCtx.waitUntil(runMonitoringTick(context.env));
   return context.json(response);
 });
 app.delete("/api/instruments/:id", async (context) => {

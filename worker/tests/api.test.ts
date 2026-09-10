@@ -1,5 +1,5 @@
 import { applyD1Migrations, env, SELF, type D1Migration } from "cloudflare:test";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 declare global {
   namespace Cloudflare {
     interface Env { DB: D1Database; TEST_MIGRATIONS: D1Migration[] }
@@ -23,6 +23,14 @@ describe("worker API", () => {
     const created = await createdResponse.json<{ id: number; supports: string[]; source_mappings: Array<{ id: number; symbol: string }> }>();
     expect(created.supports).toEqual(["90000.1000000000"]);
     expect(created.source_mappings[0]?.symbol).toBe("BTCUSDT");
+    await vi.waitFor(async () => {
+      const runtime = await SELF.fetch("https://example.com/api/runtime");
+      expect(await runtime.json()).toMatchObject({
+        scheduler_ready: true,
+        enabled_sources: 0,
+        last_tick_finished_at: expect.any(String),
+      });
+    });
     const sourceId = created.source_mappings[0]!.id;
     const patched = await SELF.fetch(`https://example.com/api/instruments/${created.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled: false }) });
     expect((await patched.json<{ enabled: boolean }>()).enabled).toBe(false);
