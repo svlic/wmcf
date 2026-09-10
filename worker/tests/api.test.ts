@@ -60,6 +60,9 @@ describe("worker API", () => {
     });
     expect(setup.status).toBe(201);
     expect(await setup.json()).toMatchObject({ authenticated: true, setup_required: false });
+    const storedConfig = await env.DB.prepare("SELECT password_iterations FROM app_config WHERE singleton=1")
+      .first<{ password_iterations: number }>();
+    expect(storedConfig?.password_iterations).toBe(20_000);
     const cookie = setup.headers.get("set-cookie")?.split(";", 1)[0];
     expect(cookie).toBeTruthy();
 

@@ -1,6 +1,7 @@
 import type { Env, TelegramCredentials } from "./types";
 
-const PASSWORD_ITERATIONS = 210_000;
+// Keep password hashing within the 10 ms CPU budget of Workers Free requests.
+const PASSWORD_ITERATIONS = 20_000;
 const encoder = new TextEncoder();
 
 export interface AppConfigRow {
