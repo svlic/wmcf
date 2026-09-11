@@ -58,17 +58,149 @@ export async function fetchPrice(source: EnabledSource): Promise<PollResult> {
   } catch (error) { return { ok: false, error: `provider_error: ${error instanceof Error ? error.message : "unknown provider error"}`.slice(0, 500) }; }
 }
 
-export async function querySymbols(provider: Provider, marketType: MarketType, query: string): Promise<Array<{ symbol: string; label: string; provider: Provider; market_type: MarketType }>> {
-  const q = query.trim().toUpperCase(); if (!q) return [];
+export interface SymbolOption {
+  symbol: string;
+  label: string;
+  provider: Provider;
+  market_type: MarketType;
+}
+
+type HyperliquidDex = {
+  assetToStreamingOiCap?: unknown;
+  assetToFundingMultiplier?: unknown;
+  assetToFundingInterestRate?: unknown;
+};
+
+function symbolRank(symbol: string, query: string): [number, string] {
+  const normalized = symbol.toUpperCase();
+  const asset = normalized.split(":").at(-1) ?? normalized;
+  if (asset === query) return [0, normalized];
+  if (asset.startsWith(query)) return [1, normalized];
+  return [2, normalized];
+}
+
+function compareSymbols(left: string, right: string, query: string): number {
+  const leftRank = symbolRank(left, query);
+  const rightRank = symbolRank(right, query);
+  return leftRank[0] - rightRank[0] || leftRank[1].localeCompare(rightRank[1]);
+}
+
+function hyperliquidDexSymbols(dex: HyperliquidDex): string[] {
+  const symbols: string[] = [];
+  for (const key of [
+    "assetToStreamingOiCap",
+    "assetToFundingMultiplier",
+    "assetToFundingInterestRate",
+  ] as const) {
+    const entries = dex[key];
+    if (!Array.isArray(entries)) continue;
+    for (const entry of entries) {
+      if (Array.isArray(entry) && typeof entry[0] === "string") symbols.push(entry[0]);
+    }
+  }
+  return symbols;
+}
+
+async function queryYahooSymbols(
+  provider: Provider,
+  marketType: MarketType,
+  query: string,
+): Promise<SymbolOption[]> {
   try {
-    if (provider === "yfinance") {
-      const payload = await jsonFetch(`https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=25&newsCount=0`) as { quotes?: Array<{ symbol?: string; shortname?: string; longname?: string }> };
-      return (payload.quotes ?? []).filter((x): x is { symbol: string; shortname?: string; longname?: string } => typeof x.symbol === "string").slice(0, 25).map((x) => ({ symbol: x.symbol.toUpperCase(), label: `${x.symbol} — ${x.shortname ?? x.longname ?? x.symbol}`, provider, market_type: marketType }));
+    const scan = async (field: "name" | "description") => jsonFetch(
+      "https://scanner.tradingview.com/america/scan",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filter: [{ left: field, operation: "match", right: query }],
+          markets: ["america"],
+          columns: ["name", "description", "type", "exchange"],
+          range: [0, 25],
+        }),
+      },
+    ) as Promise<{ data?: TradingViewRow[] }>;
+    const results = await Promise.allSettled([scan("name"), scan("description")]);
+    const rows = results.flatMap((result) =>
+      result.status === "fulfilled" ? payloadRows(result.value) : []
+    );
+    const optionsBySymbol: Record<string, SymbolOption> = {};
+    for (const row of rows) {
+      const [symbol, description, type] = row.d ?? [];
+      if (typeof symbol !== "string" || !["stock", "fund"].includes(String(type))) continue;
+      const normalized = symbol.toUpperCase();
+      const descriptionMatches = typeof description === "string"
+        && description.toUpperCase().split(/[^A-Z0-9]+/).some((word) => word.startsWith(query));
+      if (!normalized.includes(query) && !descriptionMatches) continue;
+      const label = typeof description === "string" && description
+        ? `${symbol} — ${description}`
+        : symbol;
+      optionsBySymbol[normalized] = {
+        symbol: normalized,
+        label,
+        provider,
+        market_type: marketType,
+      };
     }
-    if (provider === "hyperliquid") {
-      const payload = await jsonFetch("https://api.hyperliquid.xyz/info", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "allMids" }) }) as Record<string, unknown>;
-      return Object.keys(payload).filter((symbol) => symbol.toUpperCase().includes(q)).sort().slice(0, 25).map((symbol) => ({ symbol, label: symbol, provider, market_type: marketType }));
+    const options = Object.values(optionsBySymbol);
+    if (options.length > 0) {
+      return options
+        .sort((left, right) => compareSymbols(left.symbol, right.symbol, query))
+        .slice(0, 25);
     }
+  } catch {
+    // A valid ticker remains selectable when the upstream catalog is unavailable.
+  }
+  return /^[A-Z0-9.\-^=]+$/.test(query)
+    ? [{ symbol: query, label: query, provider, market_type: marketType }]
+    : [];
+}
+
+function payloadRows(payload: { data?: TradingViewRow[] }): TradingViewRow[] {
+  return Array.isArray(payload.data) ? payload.data : [];
+}
+
+async function queryHyperliquidSymbols(
+  provider: Provider,
+  marketType: MarketType,
+  query: string,
+): Promise<SymbolOption[]> {
+  const request = (body: Record<string, string>) => jsonFetch("https://api.hyperliquid.xyz/info", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const [midsResult, dexsResult] = await Promise.allSettled([
+    request({ type: "allMids" }),
+    request({ type: "perpDexs" }),
+  ]);
+  const symbols = new Set<string>();
+  if (midsResult.status === "fulfilled" && typeof midsResult.value === "object" && midsResult.value !== null) {
+    Object.keys(midsResult.value).forEach((symbol) => symbols.add(symbol));
+  }
+  if (dexsResult.status === "fulfilled" && Array.isArray(dexsResult.value)) {
+    for (const dex of dexsResult.value) {
+      if (typeof dex !== "object" || dex === null) continue;
+      hyperliquidDexSymbols(dex).forEach((symbol) => symbols.add(symbol));
+    }
+  }
+  return [...symbols]
+    .filter((symbol) => symbol.toUpperCase().includes(query))
+    .sort((left, right) => compareSymbols(left, right, query))
+    .slice(0, 25)
+    .map((symbol) => ({ symbol, label: symbol, provider, market_type: marketType }));
+}
+
+export async function querySymbols(
+  provider: Provider,
+  marketType: MarketType,
+  query: string,
+): Promise<SymbolOption[]> {
+  const q = query.trim().toUpperCase();
+  if (!q) return [];
+  if (provider === "yfinance") return queryYahooSymbols(provider, marketType, q);
+  if (provider === "hyperliquid") return queryHyperliquidSymbols(provider, marketType, q);
+  try {
     const expectedCurrency = marketType === "coin_m_futures" ? "USD" : null;
     const rows = await tradingViewScan({
       filter: [
@@ -79,12 +211,15 @@ export async function querySymbols(provider: Provider, marketType: MarketType, q
       columns: ["name", "currency"],
       range: [0, 2000],
     });
-    return rows.flatMap((row) => {
+    return rows.flatMap((row): SymbolOption[] => {
       const [name, currency] = row.d ?? [];
       if (typeof name !== "string" || !name.endsWith(".P")) return [];
       if (expectedCurrency === null ? currency !== "USDT" && currency !== "USDC" : currency !== expectedCurrency) return [];
       const symbol = `${name.slice(0, -2)}${marketType === "coin_m_futures" ? "_PERP" : ""}`;
       return symbol.includes(q) ? [{ symbol, label: symbol, provider, market_type: marketType }] : [];
-    }).sort((a, b) => a.symbol.localeCompare(b.symbol)).slice(0, 25);
-  } catch { return provider === "binance" ? [{ symbol: marketType === "usd_m_futures" && !q.endsWith("USDT") ? `${q}USDT` : q, label: marketType === "usd_m_futures" && !q.endsWith("USDT") ? `${q}USDT` : q, provider, market_type: marketType }] : []; }
+    }).sort((left, right) => compareSymbols(left.symbol, right.symbol, q)).slice(0, 25);
+  } catch {
+    const symbol = marketType === "usd_m_futures" && !q.endsWith("USDT") ? `${q}USDT` : q;
+    return [{ symbol, label: symbol, provider, market_type: marketType }];
+  }
 }

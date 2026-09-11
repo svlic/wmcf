@@ -57,3 +57,97 @@ describe("TradingView-backed Binance mappings", () => {
     ]);
   });
 });
+
+describe("production symbol search", () => {
+  it("returns Yahoo stock matches from the TradingView equity catalog", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)) as { filter: Array<{ left: string }> };
+      const descriptionSearch = body.filter[0]?.left === "description";
+      const data = descriptionSearch
+        ? [
+            { s: "NASDAQ:MSTX", d: ["MSTX", "Defiance Daily Target 2x Long MSTR ETF", "fund", "NASDAQ"] },
+            { s: "NASDAQ:MSTU", d: ["MSTU", "T-Rex 2X Long MSTR Daily Target ETF", "fund", "NASDAQ"] },
+            { s: "OTC:AFIIQ", d: ["AFIIQ", "Armstrong Flooring, Inc.", "stock", "OTC"] },
+          ]
+        : [{ s: "NASDAQ:MSTR", d: ["MSTR", "Strategy Inc Class A", "stock", "NASDAQ"] }];
+      return new Response(JSON.stringify({ data }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(querySymbols("yfinance", "equity", "mstr")).resolves.toEqual([
+      {
+        symbol: "MSTR",
+        label: "MSTR — Strategy Inc Class A",
+        provider: "yfinance",
+        market_type: "equity",
+      },
+      {
+        symbol: "MSTU",
+        label: "MSTU — T-Rex 2X Long MSTR Daily Target ETF",
+        provider: "yfinance",
+        market_type: "equity",
+      },
+      {
+        symbol: "MSTX",
+        label: "MSTX — Defiance Daily Target 2x Long MSTR ETF",
+        provider: "yfinance",
+        market_type: "equity",
+      },
+    ]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://scanner.tradingview.com/america/scan",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          filter: [{ left: "name", operation: "match", right: "MSTR" }],
+          markets: ["america"],
+          columns: ["name", "description", "type", "exchange"],
+          range: [0, 25],
+        }),
+      }),
+    );
+  });
+
+  it("keeps an exact Yahoo ticker selectable when the catalog is rate limited", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("rate limited", { status: 429 })));
+
+    await expect(querySymbols("yfinance", "equity", "CRCL")).resolves.toEqual([
+      {
+        symbol: "CRCL",
+        label: "CRCL",
+        provider: "yfinance",
+        market_type: "equity",
+      },
+    ]);
+  });
+
+  it("returns HIP-3 MSTR and CRCL symbols from Hyperliquid DEX metadata", async () => {
+    const mids = { BTC: "60000", HMSTR: "1" };
+    const dexs = [
+      null,
+      {
+        name: "xyz",
+        assetToStreamingOiCap: [
+          ["xyz:MSTR", "100000000.0"],
+          ["xyz:CRCL", "150000000.0"],
+        ],
+        assetToFundingMultiplier: [["xyz:MSTR", "0.5"]],
+      },
+      {
+        name: "flx",
+        assetToFundingInterestRate: [["flx:CRCL", "0.0"]],
+      },
+    ];
+    const fetchMock = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)) as { type: string };
+      return new Response(JSON.stringify(body.type === "perpDexs" ? dexs : mids), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const mstr = await querySymbols("hyperliquid", "perpetual", "MSTR");
+    const crcl = await querySymbols("hyperliquid", "perpetual", "CRCL");
+
+    expect(mstr.map((option) => option.symbol)).toEqual(["xyz:MSTR", "HMSTR"]);
+    expect(crcl.map((option) => option.symbol)).toEqual(["flx:CRCL", "xyz:CRCL"]);
+  });
+});
