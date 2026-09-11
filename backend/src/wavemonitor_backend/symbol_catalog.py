@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from threading import Lock
 from typing import Final, Protocol
 from urllib.request import Request, urlopen
 
@@ -100,6 +101,7 @@ class TradingViewBinanceClient:
 
 
 YFinanceSearchFactory = Callable[[str, int], list[SymbolOption]]
+HyperliquidClientFactory = Callable[[], HyperliquidInfoClient]
 
 
 def _normalize_query(query: str) -> str:
@@ -173,11 +175,15 @@ class SymbolCatalog:
         usd_m_client: BinanceExchangeListing | None = None,
         coin_m_client: BinanceExchangeListing | None = None,
         hyperliquid_client: HyperliquidInfoClient | None = None,
+        hyperliquid_client_factory: HyperliquidClientFactory | None = None,
         yfinance_search: YFinanceSearchFactory | None = None,
     ) -> None:
         self._usd_m_client = usd_m_client
         self._coin_m_client = coin_m_client
         self._hyperliquid_client = hyperliquid_client
+        self._hyperliquid_client_factory = hyperliquid_client_factory
+        self._hyperliquid_client_lock = Lock()
+        self._hyperliquid_symbol_cache: tuple[str, ...] | None = None
         self._yfinance_search = yfinance_search or _default_yfinance_search
 
     def search(self, provider: Provider, market_type: MarketType, query: str) -> list[SymbolOption]:
@@ -236,7 +242,7 @@ class SymbolCatalog:
         provider: Provider,
         market_type: MarketType,
     ) -> list[SymbolOption]:
-        if self._hyperliquid_client is None:
+        if self._resolved_hyperliquid_client() is None:
             return []
         symbols = self._hyperliquid_symbols()
         return _filter_symbols(
@@ -247,31 +253,45 @@ class SymbolCatalog:
             limit=SYMBOL_QUERY_MAX_RESULTS,
         )
 
-    def _hyperliquid_symbols(self) -> list[str]:
-        if self._hyperliquid_client is None:
-            return []
-        symbols = list(self._hyperliquid_mids_for_dex("").keys())
-        for dex in self._hyperliquid_dexs():
+    def _resolved_hyperliquid_client(self) -> HyperliquidInfoClient | None:
+        if self._hyperliquid_client is not None or self._hyperliquid_client_factory is None:
+            return self._hyperliquid_client
+        with self._hyperliquid_client_lock:
+            if self._hyperliquid_client is None:
+                self._hyperliquid_client = self._hyperliquid_client_factory()
+        return self._hyperliquid_client
+
+    def _hyperliquid_symbols(self) -> tuple[str, ...]:
+        if self._hyperliquid_symbol_cache is not None:
+            return self._hyperliquid_symbol_cache
+        client = self._resolved_hyperliquid_client()
+        if client is None:
+            return ()
+        symbols = list(self._hyperliquid_mids_for_dex(client, "").keys())
+        for dex in self._hyperliquid_dexs(client):
             name = _hyperliquid_dex_name(dex)
             if name is not None:
-                symbols.extend(self._hyperliquid_mids_for_dex(name).keys())
+                symbols.extend(self._hyperliquid_mids_for_dex(client, name).keys())
             symbols.extend(_hyperliquid_dex_assets(dex))
-        return symbols
+        if symbols:
+            self._hyperliquid_symbol_cache = tuple(set(symbols))
+            return self._hyperliquid_symbol_cache
+        return ()
 
-    def _hyperliquid_dexs(self) -> list[dict[str, object]]:
-        if self._hyperliquid_client is None:
-            return []
+    @staticmethod
+    def _hyperliquid_dexs(client: HyperliquidInfoClient) -> list[dict[str, object]]:
         try:
-            dexs = self._hyperliquid_client.perp_dexs()
+            dexs = client.perp_dexs()
         except Exception:
             return []
         return [dex for dex in dexs if isinstance(dex, dict)]
 
-    def _hyperliquid_mids_for_dex(self, dex: str) -> dict[str, str]:
-        if self._hyperliquid_client is None:
-            return {}
+    @staticmethod
+    def _hyperliquid_mids_for_dex(
+        client: HyperliquidInfoClient, dex: str
+    ) -> dict[str, str]:
         try:
-            return self._hyperliquid_client.all_mids(dex)
+            return client.all_mids(dex)
         except Exception:
             return {}
 
@@ -358,12 +378,16 @@ def default_binance_futures_clients() -> tuple[BinanceExchangeListing, BinanceEx
     )
 
 
-def default_symbol_catalog() -> SymbolCatalog:
+def _default_hyperliquid_client() -> HyperliquidInfoClient:
     from hyperliquid.info import Info
 
+    return Info(skip_ws=True, timeout=HYPERLIQUID_TIMEOUT_SECONDS)
+
+
+def default_symbol_catalog() -> SymbolCatalog:
     usd_m, coin_m = default_binance_futures_clients()
     return SymbolCatalog(
         usd_m_client=usd_m,
         coin_m_client=coin_m,
-        hyperliquid_client=Info(skip_ws=True, timeout=HYPERLIQUID_TIMEOUT_SECONDS),
+        hyperliquid_client_factory=_default_hyperliquid_client,
     )

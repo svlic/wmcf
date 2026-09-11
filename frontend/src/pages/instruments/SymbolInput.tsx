@@ -3,6 +3,8 @@ import type { FocusEvent } from "react";
 import { apiClient, ApiError } from "../../api/client";
 import type { SymbolOption } from "../../api/client";
 
+const SEARCH_DEBOUNCE_MS = 250;
+
 type Props = {
   id: string;
   provider: string;
@@ -31,12 +33,16 @@ export function SymbolInput({ id, provider, marketType, value, onChange }: Props
     }
 
     const controller = new AbortController();
+    let cancelled = false;
     setState("loading");
     setMessage(null);
 
-    async function query() {
+    const timeout = window.setTimeout(async () => {
       try {
         const result = await apiClient.querySymbols(provider, marketType, trimmedValue, controller.signal);
+        if (cancelled) {
+          return;
+        }
         if (suppressListRef.current) {
           suppressListRef.current = false;
           setOptions([]);
@@ -46,17 +52,20 @@ export function SymbolInput({ id, provider, marketType, value, onChange }: Props
         setState("ready");
         setMessage(result.length === 0 ? "没有匹配的 Symbol，可继续手动输入。" : null);
       } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") {
+        if (cancelled || (error instanceof DOMException && error.name === "AbortError")) {
           return;
         }
         setOptions([]);
         setState("error");
         setMessage(error instanceof ApiError ? error.message : "Symbol 查询失败，可继续手动输入。");
       }
-    }
+    }, SEARCH_DEBOUNCE_MS);
 
-    query();
-    return () => controller.abort();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
   }, [isActive, marketType, provider, selectedSymbol, trimmedValue]);
 
   function selectOption(symbol: string) {

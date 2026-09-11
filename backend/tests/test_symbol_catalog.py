@@ -178,6 +178,59 @@ def test_tradingview_catalog_separates_binance_linear_and_inverse_contracts(
     }
 
 
+def test_yfinance_search_does_not_initialize_hyperliquid_client() -> None:
+    hyperliquid_factory_calls = 0
+
+    def create_hyperliquid() -> FakeHyperliquid:
+        nonlocal hyperliquid_factory_calls
+        hyperliquid_factory_calls += 1
+        return FakeHyperliquid({"BTC": "1"})
+
+    expected = SymbolOption(
+        symbol="MSTR",
+        label="MSTR — Strategy Inc",
+        provider=Provider.YFINANCE,
+        market_type=MarketType.EQUITY,
+    )
+    catalog = SymbolCatalog(
+        hyperliquid_client_factory=create_hyperliquid,
+        yfinance_search=lambda _query, _limit: [expected],
+    )
+
+    assert catalog.search(Provider.YFINANCE, MarketType.EQUITY, "MSTR") == [expected]
+    assert hyperliquid_factory_calls == 0
+
+
+def test_hyperliquid_initializes_once_and_reuses_symbol_catalog() -> None:
+    hyperliquid_factory_calls = 0
+    client = FakeHyperliquid(
+        {"BTC": "1"},
+        dexs=[
+            {
+                "name": "xyz",
+                "assetToStreamingOiCap": [
+                    ["xyz:MSTR", "100000000.0"],
+                    ["xyz:CRCL", "150000000.0"],
+                ],
+            }
+        ],
+    )
+
+    def create_hyperliquid() -> FakeHyperliquid:
+        nonlocal hyperliquid_factory_calls
+        hyperliquid_factory_calls += 1
+        return client
+
+    catalog = SymbolCatalog(hyperliquid_client_factory=create_hyperliquid)
+
+    mstr = catalog.search(Provider.HYPERLIQUID, MarketType.PERPETUAL, "MSTR")
+    crcl = catalog.search(Provider.HYPERLIQUID, MarketType.PERPETUAL, "CRCL")
+
+    assert [option.symbol for option in mstr] == ["xyz:MSTR"]
+    assert [option.symbol for option in crcl] == ["xyz:CRCL"]
+    assert hyperliquid_factory_calls == 1
+
+
 def test_hyperliquid_searches_all_mids() -> None:
     catalog = SymbolCatalog(hyperliquid_client=FakeHyperliquid({"BTC": "1", "ETH": "2"}))
     options = catalog.search(Provider.HYPERLIQUID, MarketType.PERPETUAL, "bt")
