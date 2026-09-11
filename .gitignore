@@ -1,48 +1,32 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-.pytest_cache/
-.ruff_cache/
-.mypy_cache/
-.venv/
-venv/
-*.egg-info/
-dist/
-build/
-.coverage
-htmlcov/
-
-# Environment & secrets
+# Environment and secrets
 .env
 .env.*
-!.env.example
+.dev.vars
+.dev.vars.*
 
-# Node / frontend
+.venv/
+.pytest_cache/
+.ruff_cache/
+# Node and build output
 node_modules/
+dist/
 coverage/
 *.tsbuildinfo
+frontend/.vite/
 
-# Data & OS
-*.sqlite3
-*.sqlite3-journal
-session_secret
-.DS_Store
-Thumbs.db
+# Cloudflare Wrangler local state
+.wrangler/
 
-# IDE / tooling
+# IDE and OS
 .idea/
 .vscode/
 *.swp
 *.swo
+.DS_Store
+Thumbs.db
 
-# Project-specific (symlink at repo root; ignore name without trailing slash)
+# Project-local tooling
 .codegraph
 .codegraph/
 .omo/
-
-# Vite
-frontend/.vite/
-
-# Playwright MCP / local browser artifacts
 .playwright-mcp/

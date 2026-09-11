@@ -203,7 +203,7 @@ export function OpsPanel() {
         </p>
         {!runtime?.telegram_ready ? (
           <p className="muted-text">
-            尚未配置。设置 TELEGRAM_BOT_TOKEN 与 TELEGRAM_CHAT_ID 后可推送告警。
+            尚未配置。请在“系统设置”中启用并填写 Telegram 凭据。
           </p>
         ) : (
           <div className="test-actions">

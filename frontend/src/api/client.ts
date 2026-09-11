@@ -55,7 +55,6 @@ export class ApiError extends Error {
 }
 
 export class ApiClient {
-  constructor(private readonly baseUrl: string) {}
 
   private requestInit(signal?: AbortSignal, init: RequestInit = {}): RequestInit {
     return {
@@ -65,16 +64,13 @@ export class ApiClient {
     };
   }
 
-  private buildUrl(path: string): string | URL {
-    return this.baseUrl === "" ? path : new URL(path, this.baseUrl);
-  }
 
   private async fetch<T>(
     path: string,
     schema: z.ZodType<T>,
     options?: RequestInit,
   ): Promise<T> {
-    const response = await fetch(this.buildUrl(path), {
+    const response = await fetch(path, {
       ...options,
       credentials: "include",
       headers: {
@@ -161,6 +157,14 @@ export class ApiClient {
 
   async getRuntime(signal?: AbortSignal): Promise<RuntimeResponse> {
     return this.fetch("/api/runtime", RuntimeResponseSchema, this.requestInit(signal));
+  }
+
+  async refreshPrices(signal?: AbortSignal): Promise<void> {
+    await this.fetch(
+      "/api/prices/refresh",
+      EmptyResponseSchema,
+      this.requestInit(signal, { method: "POST" }),
+    );
   }
 
   async getLatestPrices(signal?: AbortSignal): Promise<readonly LatestPrice[]> {
@@ -269,4 +273,4 @@ export class ApiClient {
   }
 }
 
-export const apiClient = new ApiClient(import.meta.env.VITE_API_BASE_URL ?? "");
+export const apiClient = new ApiClient();

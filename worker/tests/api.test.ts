@@ -1,5 +1,6 @@
-import { applyD1Migrations, env, SELF, type D1Migration } from "cloudflare:test";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { applyD1Migrations, createExecutionContext, env, SELF, type D1Migration } from "cloudflare:test";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import worker from "../src/index";
 declare global {
   namespace Cloudflare {
     interface Env { DB: D1Database; TEST_MIGRATIONS: D1Migration[] }
@@ -7,6 +8,7 @@ declare global {
 }
 
 beforeAll(async () => applyD1Migrations(env.DB, env.TEST_MIGRATIONS));
+afterEach(() => vi.unstubAllGlobals());
 
 describe("worker API", () => {
   it("reports health and empty runtime", async () => {
@@ -41,6 +43,32 @@ describe("worker API", () => {
     const deleted = await SELF.fetch(`https://example.com/api/instruments/${created.id}`, { method: "DELETE" });
     expect(deleted.status).toBe(204);
     expect(await (await SELF.fetch("https://example.com/api/instruments")).json()).toEqual([]);
+  });
+
+  it("polls enabled sources before completing a manual price refresh", async () => {
+    const now = new Date().toISOString();
+    const instrument = await env.DB.prepare("INSERT INTO instrument(name,enabled,alert_mode,supports,resistances,created_at,updated_at,rule_cycle_started_at) VALUES(?,?,?,?,?,?,?,?) RETURNING id")
+      .bind("Manual refresh", 1, "static", "[]", "[]", now, now, now)
+      .first<{ id: number }>();
+    const source = await env.DB.prepare("INSERT INTO source_mapping(instrument_id,provider,market_type,symbol,enabled) VALUES(?,?,?,?,?) RETURNING id")
+      .bind(instrument!.id, "binance", "usd_m_futures", "BTCUSDT", 1)
+      .first<{ id: number }>();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      data: [{ s: "BINANCE:BTCUSDT.P", d: [65432.1] }],
+    }), { status: 200 })));
+    const context = createExecutionContext();
+
+    const response = await worker.fetch(
+      new Request("https://example.com/api/prices/refresh", { method: "POST" }),
+      env,
+      context,
+    );
+
+    expect(response.status).toBe(204);
+    expect(await env.DB.prepare("SELECT price FROM price_observation WHERE source_mapping_id=? ORDER BY id DESC LIMIT 1")
+      .bind(source!.id)
+      .first<{ price: string }>()).toEqual({ price: "65432.1000000000" });
+    await env.DB.prepare("DELETE FROM instrument WHERE id=?").bind(instrument!.id).run();
   });
 
   it("rejects invalid provider-market pairs", async () => {

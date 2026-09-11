@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiClient, ApiError, serializeInstrumentLevelsForApi } from "../../src/api/client";
 
 describe("ApiClient", () => {
-  const client = new ApiClient("http://test.local");
+  const client = new ApiClient();
 
   afterEach(() => {
     vi.restoreAllMocks();
@@ -45,8 +45,19 @@ describe("ApiClient", () => {
     await client.getRuntime();
 
     expect(fetch).toHaveBeenCalledWith(
-      expect.objectContaining({ pathname: "/api/runtime" }),
+      "/api/runtime",
       expect.objectContaining({ cache: "no-store" }),
+    );
+  });
+
+  it("posts manual refresh and waits for its empty response", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 204 }));
+
+    await client.refreshPrices();
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/prices/refresh",
+      expect.objectContaining({ method: "POST", cache: "no-store" }),
     );
   });
 
@@ -184,12 +195,12 @@ describe("ApiClient", () => {
     const result = await client.getInstrument(1);
     expect(result.name).toBe("Bitcoin");
     expect(fetch).toHaveBeenCalledWith(
-      expect.objectContaining({ pathname: "/api/instruments" }),
+      "/api/instruments",
       expect.any(Object),
     );
   });
 
-  it("uses same-origin API paths when no base URL is configured", async () => {
+  it("always uses same-origin API paths", async () => {
     const runtimeResponse = {
       scheduler_ready: false,
       providers_ready: false,
@@ -206,7 +217,7 @@ describe("ApiClient", () => {
     const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>();
     fetchMock.mockResolvedValue(new Response(JSON.stringify(runtimeResponse), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
-    const sameOriginClient = new ApiClient("");
+    const sameOriginClient = new ApiClient();
 
     await sameOriginClient.getRuntime();
 
@@ -218,14 +229,14 @@ describe("ApiClient", () => {
     );
   });
 
-  it("surfaces backend error detail for failed telegram test requests", async () => {
+  it("surfaces API error detail for failed telegram test requests", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ detail: "Telegram delivery failed with HTTP 401." }), {
         status: 502,
         statusText: "Bad Gateway",
       }),
     );
-    const sameOriginClient = new ApiClient("");
+    const sameOriginClient = new ApiClient();
 
     await expect(sameOriginClient.testTelegram()).rejects.toEqual(
       new ApiError(502, "Telegram delivery failed with HTTP 401."),

@@ -151,6 +151,10 @@ app.get("/api/alerts", async (context) => {
   const rows = await context.env.DB.prepare("SELECT id,instrument_id,source_mapping_id,alert_kind,price,message,triggered_at FROM alert_event ORDER BY triggered_at DESC LIMIT 50").all();
   return context.json(rows.results);
 });
+app.post("/api/prices/refresh", async (context) => {
+  await runMonitoringTick(context.env);
+  return context.body(null, 204);
+});
 app.get("/api/prices/latest", async (context) => {
   const rows = await context.env.DB.prepare("WITH latest AS (SELECT p.*,ROW_NUMBER() OVER(PARTITION BY source_mapping_id ORDER BY observed_at DESC,id DESC) rn FROM price_observation p WHERE error IS NULL AND price IS NOT NULL),crossings AS (SELECT a.source_mapping_id,MAX(a.alert_kind='support_breach') support_breached,MAX(a.alert_kind='resistance_breakout') resistance_broken FROM alert_event a JOIN instrument i ON i.id=a.instrument_id AND i.rule_cycle_started_at=a.rule_cycle_started_at GROUP BY a.source_mapping_id) SELECT i.id instrument_id,i.name instrument_name,s.id source_mapping_id,s.provider,s.market_type,s.symbol,p.price last_price,p.observed_at last_observed_at,NULL last_error,COALESCE(c.support_breached,0) support_breached,COALESCE(c.resistance_broken,0) resistance_broken FROM instrument i JOIN source_mapping s ON s.instrument_id=i.id JOIN latest p ON p.source_mapping_id=s.id AND p.rn=1 LEFT JOIN crossings c ON c.source_mapping_id=s.id WHERE i.enabled=1 AND s.enabled=1 ORDER BY i.id,s.id").all<Record<string, unknown>>();
   return context.json(rows.results.map((row) => ({ ...row, support_breached: Boolean(row.support_breached), resistance_broken: Boolean(row.resistance_broken) })));

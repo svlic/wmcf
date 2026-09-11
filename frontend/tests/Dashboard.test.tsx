@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Dashboard } from "../src/pages/dashboard/Dashboard";
 import { apiClient } from "../src/api/client";
@@ -11,6 +11,7 @@ vi.mock("../src/api/client", async (importOriginal) => {
     ...actual,
     apiClient: {
       getRuntime: vi.fn(),
+      refreshPrices: vi.fn(),
       getLatestPrices: vi.fn(),
       getInstruments: vi.fn(),
     },
@@ -34,6 +35,7 @@ const emptyRuntime = {
 describe("Dashboard", () => {
   beforeEach(() => {
     vi.mocked(apiClient.getRuntime).mockClear();
+    vi.mocked(apiClient.refreshPrices).mockClear();
     vi.mocked(apiClient.getLatestPrices).mockClear();
     vi.mocked(apiClient.getInstruments).mockClear();
   });
@@ -286,4 +288,58 @@ describe("Dashboard", () => {
       expect(apiClient.getLatestPrices).toHaveBeenCalledTimes(2);
     });
   });
+  it("polls providers before reloading prices when refresh is clicked", async () => {
+    const instrument = {
+      id: 1,
+      name: "Bitcoin",
+      enabled: true,
+      alert_mode: "static" as const,
+      supports: ["90"],
+      resistances: ["110"],
+      high_water: null,
+      fixed_drawdown: null,
+      near_support_threshold: "0.01",
+      risk_reward_threshold: "2.0",
+      source_mappings: [{
+        id: 1,
+        provider: "binance",
+        market_type: "usd_m_futures",
+        symbol: "BTCUSDT",
+        enabled: true,
+      }],
+    } satisfies InstrumentWithMappings;
+    const refreshedPrice = {
+      instrument_id: 1,
+      instrument_name: "Bitcoin",
+      source_mapping_id: 1,
+      provider: "binance",
+      market_type: "usd_m_futures",
+      symbol: "BTCUSDT",
+      last_price: "101",
+      last_observed_at: "2026-09-11T12:00:00Z",
+      last_error: null,
+      support_breached: false,
+      resistance_broken: false,
+    };
+    vi.mocked(apiClient.getRuntime).mockResolvedValue(emptyRuntime);
+    vi.mocked(apiClient.getInstruments).mockResolvedValue([instrument]);
+    vi.mocked(apiClient.getLatestPrices)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([refreshedPrice]);
+    vi.mocked(apiClient.refreshPrices).mockResolvedValue();
+
+    render(<Dashboard />);
+    const refreshButton = await screen.findByRole("button", { name: "刷新数据" });
+
+    fireEvent.click(refreshButton);
+
+    await waitFor(() => {
+      expect(apiClient.refreshPrices).toHaveBeenCalledOnce();
+      expect(screen.getByText("101.00")).toBeInTheDocument();
+    });
+    expect(vi.mocked(apiClient.refreshPrices).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(apiClient.getLatestPrices).mock.invocationCallOrder[1]!,
+    );
+  });
+
 });

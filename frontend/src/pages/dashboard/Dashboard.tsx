@@ -105,8 +105,20 @@ export function Dashboard() {
     return () => window.clearInterval(id);
   }, [loadData]);
 
-  const handleRefresh = () => {
-    void loadData(undefined, { refresh: true });
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await apiClient.refreshPrices();
+      await loadData(undefined, { refresh: true });
+    } catch (error) {
+      setState("error");
+      if (error instanceof ApiError) {
+        setErrorMessage(error.message);
+      } else {
+        setErrorMessage("发生未知错误。");
+      }
+      setRefreshing(false);
+    }
   };
 
   if (state === "loading") {
