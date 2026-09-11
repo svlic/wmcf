@@ -68,16 +68,6 @@ export function computeRiskRewardRatio(
   return (resistanceN - priceN) / denominator;
 }
 
-export function formatMetricPercent(value: number | null, fractionDigits = 2): string {
-  if (value === null) {
-    return "—";
-  }
-  return `${value.toFixed(fractionDigits)}%`;
-}
-
-export function formatRiskReward(value: number | null, fractionDigits = 2): string {
-  if (value === null) {
-    return "—";
-  }
-  return value.toFixed(fractionDigits);
+export function formatMetric(value: number | null, suffix = "", fractionDigits = 2): string {
+  return value === null ? "—" : `${value.toFixed(fractionDigits)}${suffix}`;
 }

@@ -83,7 +83,6 @@ export function Dashboard() {
     void loadData(controller.signal);
     return () => controller.abort();
   }, [loadData]);
-
   const instrumentRevision = useSyncExternalStore(
     subscribeInstrumentRevision,
     getInstrumentRevision,

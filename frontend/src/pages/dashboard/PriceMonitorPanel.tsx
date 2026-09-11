@@ -9,8 +9,7 @@ import {
   computeResistanceDistancePercent,
   computeRiskRewardRatio,
   computeSupportDistancePercent,
-  formatMetricPercent,
-  formatRiskReward,
+  formatMetric,
   nearestInstrumentLevels,
 } from "../../utils/instrumentMetrics";
 
@@ -142,9 +141,9 @@ function PriceTableRow({ row }: PriceTableRowProps) {
       <td className="price-table-row__price">
         {price === null ? "待获取" : formatDecimal(price.last_price)}
       </td>
-      <td className="price-table-row__metric">{formatMetricPercent(supportPct)}</td>
-      <td className="price-table-row__metric">{formatMetricPercent(resistancePct)}</td>
-      <td className="price-table-row__metric">{formatRiskReward(riskReward)}</td>
+      <td className="price-table-row__metric">{formatMetric(supportPct, "%")}</td>
+      <td className="price-table-row__metric">{formatMetric(resistancePct, "%")}</td>
+      <td className="price-table-row__metric">{formatMetric(riskReward)}</td>
       <td className="price-table-row__time muted-text">
         {price === null ? (
           "—"

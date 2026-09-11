@@ -71,6 +71,33 @@ describe("worker API", () => {
     await env.DB.prepare("DELETE FROM instrument WHERE id=?").bind(instrument!.id).run();
   });
 
+  it("alerts when a price falls below every configured support", async () => {
+    const now = new Date().toISOString();
+    const instrument = await env.DB.prepare("INSERT INTO instrument(name,enabled,alert_mode,supports,resistances,near_support_threshold,created_at,updated_at,rule_cycle_started_at) VALUES(?,?,?,?,?,?,?,?,?) RETURNING id")
+      .bind("Support breach", 1, "static", '["100.0000000000","110.0000000000"]', "[]", "0.0200000000", now, now, now)
+      .first<{ id: number }>();
+    const source = await env.DB.prepare("INSERT INTO source_mapping(instrument_id,provider,market_type,symbol,enabled) VALUES(?,?,?,?,?) RETURNING id")
+      .bind(instrument!.id, "binance", "usd_m_futures", "BREACHUSDT", 1)
+      .first<{ id: number }>();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      data: [{ s: "BINANCE:BREACHUSDT.P", d: [90] }],
+    }), { status: 200 })));
+
+    await worker.fetch(
+      new Request("https://example.com/api/prices/refresh", { method: "POST" }),
+      env,
+      createExecutionContext(),
+    );
+
+    expect(await env.DB.prepare("SELECT alert_kind,support FROM alert_event WHERE source_mapping_id=?")
+      .bind(source!.id)
+      .first<{ alert_kind: string; support: string }>()).toEqual({
+        alert_kind: "support_breach",
+        support: "100.0000000000",
+      });
+    await env.DB.prepare("DELETE FROM instrument WHERE id=?").bind(instrument!.id).run();
+  });
+
   it("rejects invalid provider-market pairs", async () => {
     const response = await SELF.fetch("https://example.com/api/instruments", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Bad", supports: ["1"], near_support_threshold: "0.1", source_mappings: [{ provider: "yfinance", market_type: "perpetual", symbol: "BTC" }] }) });
     expect(response.status).toBe(422);

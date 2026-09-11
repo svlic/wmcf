@@ -122,7 +122,7 @@ async function queryYahooSymbols(
     ) as Promise<{ data?: TradingViewRow[] }>;
     const results = await Promise.allSettled([scan("name"), scan("description")]);
     const rows = results.flatMap((result) =>
-      result.status === "fulfilled" ? payloadRows(result.value) : []
+      result.status === "fulfilled" && Array.isArray(result.value.data) ? result.value.data : []
     );
     const optionsBySymbol: Record<string, SymbolOption> = {};
     for (const row of rows) {
@@ -155,11 +155,6 @@ async function queryYahooSymbols(
     ? [{ symbol: query, label: query, provider, market_type: marketType }]
     : [];
 }
-
-function payloadRows(payload: { data?: TradingViewRow[] }): TradingViewRow[] {
-  return Array.isArray(payload.data) ? payload.data : [];
-}
-
 async function queryHyperliquidSymbols(
   provider: Provider,
   marketType: MarketType,

@@ -13,12 +13,9 @@ const ALERT_KIND_LABELS: Record<string, string> = {
   support_breach: "跌破支撑",
 };
 
-function formatProviderLabel(provider: string): string {
-  return PROVIDER_LABELS[provider] ?? provider;
-}
 
 export function formatSourceLabel(provider: string, marketType: string, symbol: string): string {
-  return `${formatProviderLabel(provider)} · ${marketTypeLabel(marketType)} · ${symbol}`;
+  return `${PROVIDER_LABELS[provider] ?? provider} · ${marketTypeLabel(marketType)} · ${symbol}`;
 }
 
 export function formatAlertKindLabel(kind: string): string {
