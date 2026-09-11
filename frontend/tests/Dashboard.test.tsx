@@ -143,7 +143,7 @@ describe("Dashboard", () => {
       expect(screen.getByText("Bitcoin")).toBeInTheDocument();
       expect(screen.getByText("90000.00")).toBeInTheDocument();
       expect(screen.getByText("支撑")).toBeInTheDocument();
-      expect(screen.getByText("Binance · USD-M 合约 · BTCUSDT")).toBeInTheDocument();
+      expect(screen.getByText("Binance（TradingView 数据） · USD-M 合约 · BTCUSDT")).toBeInTheDocument();
       expect(screen.getByText("95000.50")).toBeInTheDocument();
       expect(screen.getAllByText("5.26%").length).toBe(2);
       expect(screen.getByText("1.00")).toBeInTheDocument();
@@ -213,7 +213,7 @@ describe("Dashboard", () => {
       expect(screen.getByText("95010.50")).toBeInTheDocument();
     });
     expect(screen.queryByText("Bitcoin Old")).not.toBeInTheDocument();
-    expect(screen.queryByText("Binance · USD-M 合约 · BTCUSDT")).not.toBeInTheDocument();
+    expect(screen.queryByText("Binance（TradingView 数据） · USD-M 合约 · BTCUSDT")).not.toBeInTheDocument();
     expect(screen.queryByText("95000.50")).not.toBeInTheDocument();
   });
 
@@ -265,7 +265,7 @@ describe("Dashboard", () => {
       expect(screen.getByText("暂无价格数据。")).toBeInTheDocument();
     });
     expect(screen.queryByText("95000.50")).not.toBeInTheDocument();
-    expect(screen.queryByText("Binance · USD-M 合约 · BTCUSDT")).not.toBeInTheDocument();
+    expect(screen.queryByText("Binance（TradingView 数据） · USD-M 合约 · BTCUSDT")).not.toBeInTheDocument();
   });
 
   it("refetches dashboard data when instrument configuration changes", async () => {

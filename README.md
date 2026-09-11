@@ -32,7 +32,7 @@ API 约定见 [`backend/API_CONTRACT.md`](backend/API_CONTRACT.md)。
 | Docker | 24+ |
 | Docker Compose | v2（`docker compose` 子命令） |
 | 磁盘 | 约 500MB 镜像与构建缓存；数据库在命名卷中增长 |
-| 网络 | 容器需访问外网以拉取 Binance / Hyperliquid / Yahoo Finance 等行情 |
+| 网络 | 容器需访问外网以拉取 TradingView / Hyperliquid / Yahoo Finance 等行情 |
 
 ### 本地开发
 
@@ -79,8 +79,6 @@ TELEGRAM_CHAT_ID=-1001234567890
 WAVEMONITOR_WEB_PASSWORD=change-me
 # 可选：Cookie 签名密钥；不填则在首次启动时自动生成并保存在 SQLite 同目录（Docker 为 /data/session_secret）
 # WAVEMONITOR_SESSION_SECRET=
-# 可选：仅供 Binance USD-M / COIN-M API 请求使用的 HTTPS 代理
-# BINANCE_HTTPS_PROXY=http://proxy-host:port
 
 # ---------- 本地开发常用（Docker Compose 默认不读取下列变量，见下文说明）----------
 # 本地 SQLite（相对路径，文件落在项目根目录）
@@ -98,7 +96,6 @@ VITE_API_BASE_URL=http://localhost:8000
 | `TELEGRAM_CHAT_ID` | 从宿主机 `.env` 或环境传入 | 须与 Token 同时配置 |
 | `WAVEMONITOR_WEB_PASSWORD` | 从宿主机 `.env` 或环境传入 | 空则关闭访问验证；设置后首次访问需输入共享密码 |
 | `WAVEMONITOR_SESSION_SECRET` | 可选；未设置时自动生成并写入数据卷 `/data/session_secret` | 覆盖自动生成的 Cookie 签名密钥（多实例部署时需显式配置同一密钥） |
-| `BINANCE_HTTPS_PROXY` | 从宿主机 `.env` 或环境传入 | 可选；仅代理 Binance USD-M / COIN-M API 请求，适用于部署网络收到 HTTP 451 的情况 |
 
 Compose **不会**自动把 `WAVEMONITOR_POLL_INTERVAL_SECONDS`、`WAVEMONITOR_MONITORING_DISABLED` 传入容器。若要在 Docker 中调整轮询间隔或关闭调度，在 `docker-compose.yml` 的 `backend.environment` 中增加，例如：
 
@@ -137,7 +134,7 @@ curl -s http://localhost:8000/api/runtime | python3 -m json.tool
 在 Web 界面中：
 
 1. 若设置了 `WAVEMONITOR_WEB_PASSWORD`，先在中文访问验证页输入共享密码；会话通过 7 天有效的 `HttpOnly` Cookie 保持。
-2. 打开 **标的管理**，新建标的并配置支撑/阻力、阈值及数据源（YFinance / Binance / Hyperliquid 等）；Symbol 输入框会通过实时查询接口给出候选项，也支持手动输入。
+2. 打开 **标的管理**，新建标的并配置支撑/阻力、阈值及数据源（Yahoo Finance / Binance（TradingView 数据）/ Hyperliquid 等）；Symbol 输入框会通过实时查询接口给出候选项，也支持手动输入。`binance` 映射保留原有标识与 Symbol 格式，实际通过 TradingView Scanner 查询 `BINANCE` 交易所行情，避免服务端直接访问 Binance。USD-M 的 `BTCUSDT` 映射为 `BINANCE:BTCUSDT.P`，COIN-M 的 `BTCUSD_PERP` 映射为 `BINANCE:BTCUSD.P`。
 3. 在 **仪表盘** 查看 `scheduler_ready`、`polled_sources` 与全宽价格监控表格。
 4. 在 **告警与诊断** 查看最近告警；若已配置 Telegram，发送测试告警（或 `POST /api/telegram/test`）并查看数据源错误。
 
@@ -218,7 +215,7 @@ npm run deploy
 
 - 当前配置每 2 分钟执行一次 Cron，即每天 720 次；Worker 请求与 D1 读写仍受 Cloudflare 账户免费额度约束。
 - 每个启用来源每轮至少写一条价格观测；系统仅保留 3 天观测。来源数量较多或公开 API 流量较高时，免费额度不是无限容量保证。
-- Workers 不支持 `BINANCE_HTTPS_PROXY`。若 Cloudflare 出口访问 Binance 被地域限制，应停用该来源或改用可直接访问的数据源，不能依赖原 Docker 代理配置。
+- Binance 行情和合约目录通过 TradingView Scanner 的 `BINANCE` 交易所数据获取，Workers 与传统后端均不直接请求 Binance，也不需要 Binance 代理。
 - Cloudflare Cron 由平台调度，可能有触发延迟；本实现不是实时行情系统，也不保证恰好每 2 分钟执行。
 
 ---
@@ -252,7 +249,6 @@ npm run deploy
 | `TELEGRAM_CHAT_ID` | 无 | 告警接收方 Chat ID（可选） |
 | `WAVEMONITOR_WEB_PASSWORD` | 无，访问验证关闭 | 设置后，前端首次访问显示密码验证页，且 `/api/*` 需要会话 Cookie（`/api/auth/*` 与 `/health` 除外） |
 | `WAVEMONITOR_SESSION_SECRET` | 无（启用密码时自动生成并持久化） | 可选覆盖；未设置时在数据库文件旁写入 `session_secret` |
-| `BINANCE_HTTPS_PROXY` | 无 | 可选；仅供 Binance USD-M / COIN-M API 请求使用的 HTTP(S) 代理 URL |
 | `WAVEMONITOR_POLL_INTERVAL_SECONDS` | `120` | 行情轮询周期（秒），须 > 0；默认 2 分钟 |
 | `WAVEMONITOR_MONITORING_DISABLED` | 未设置 | 设为 `1` / `true` / `yes` 时关闭后台调度（仅 API，不轮询） |
 | `VITE_API_BASE_URL` | 空字符串 | **仅本地前端构建/开发**：API 根地址；Docker 生产构建留空，使用同源 `/api` |

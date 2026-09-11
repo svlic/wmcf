@@ -253,7 +253,7 @@ def test_binance_usd_m_adapter_prefers_mark_price_and_uses_usd_m_client():
     assert result.market_type == MarketType.USD_M_FUTURES
     assert result.symbol == "BTCUSDT"
     assert result.price == Decimal("60321.42")
-    assert result.raw_metadata == {"path": "mark_price.markPrice", "raw_price": "60321.42"}
+    assert result.raw_metadata == {"path": "tradingview.close", "raw_price": "60321.42"}
     assert usd_client.mark_calls == ["BTCUSDT"]
     assert coin_client.mark_calls == []
 
@@ -290,7 +290,7 @@ def test_binance_adapter_falls_back_to_latest_ticker_price_when_mark_absent():
     # Then: latest ticker price is a fallback after mark-price preference.
     assert isinstance(result, PriceResult)
     assert result.price == Decimal("60322.01")
-    assert result.raw_metadata == {"path": "ticker_price.price", "raw_price": "60322.01"}
+    assert result.raw_metadata == {"path": "tradingview.close", "raw_price": "60322.01"}
     assert client.mark_calls == ["BTCUSDT"]
     assert client.ticker_calls == ["BTCUSDT"]
 
@@ -320,7 +320,7 @@ def test_binance_adapter_returns_malformed_price_error_for_bad_decimal_string():
     # Then: Decimal string parsing rejects malformed exchange data.
     assert isinstance(result, AdapterError)
     assert result.kind == AdapterErrorKind.MALFORMED_PRICE
-    assert result.raw_metadata == {"path": "mark_price.markPrice", "raw_price": "NaNish"}
+    assert result.raw_metadata == {"path": "tradingview.close", "raw_price": "NaNish"}
 
 
 def test_hyperliquid_adapter_looks_up_all_mids_coin_and_parses_decimal_string():

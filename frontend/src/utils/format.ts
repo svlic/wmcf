@@ -2,7 +2,7 @@ import { marketTypeLabel } from "./marketTypes";
 
 const PROVIDER_LABELS: Record<string, string> = {
   yfinance: "Yahoo Finance",
-  binance: "Binance",
+  binance: "Binance（TradingView 数据）",
   hyperliquid: "Hyperliquid",
 };
 

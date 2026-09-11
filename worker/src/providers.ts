@@ -1,6 +1,18 @@
 import { fixed } from "./rules";
 import type { EnabledSource, MarketType, Provider } from "./types";
 const PROVIDER_TIMEOUT_MS = 10_000;
+const TRADINGVIEW_SCANNER_URL = "https://scanner.tradingview.com/crypto/scan";
+type TradingViewRow = { s?: string; d?: unknown[] };
+
+async function tradingViewScan(payload: Record<string, unknown>): Promise<TradingViewRow[]> {
+  const result = await jsonFetch(TRADINGVIEW_SCANNER_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }) as { data?: TradingViewRow[] };
+  if (!Array.isArray(result.data)) throw new Error("TradingView scanner response data is not a list");
+  return result.data;
+}
 
 
 export interface PriceResult { ok: true; price: string; path: string }
@@ -19,15 +31,16 @@ async function jsonFetch(url: string, init?: RequestInit): Promise<unknown> {
 export async function fetchPrice(source: EnabledSource): Promise<PollResult> {
   try {
     if (source.provider === "binance") {
-      const base = source.market_type === "coin_m_futures" ? "https://dapi.binance.com" : "https://fapi.binance.com";
-      const prefix = source.market_type === "coin_m_futures" ? "/dapi/v1" : "/fapi/v1";
-      const mark = await jsonFetch(`${base}${prefix}/premiumIndex?symbol=${encodeURIComponent(source.symbol)}`) as Record<string, unknown>;
-      const markPrice = mark.markPrice;
-      if (typeof markPrice === "string" || typeof markPrice === "number") return { ok: true, price: fixed(String(markPrice)), path: "mark_price.markPrice" };
-      const ticker = await jsonFetch(`${base}${prefix}/ticker/price?symbol=${encodeURIComponent(source.symbol)}`) as Record<string, unknown>;
-      const tickerPrice = ticker.price;
-      if (typeof tickerPrice !== "string" && typeof tickerPrice !== "number") throw new Error("price missing");
-      return { ok: true, price: fixed(String(tickerPrice)), path: "ticker_price.price" };
+      const symbol = source.symbol.endsWith("_PERP") ? source.symbol.slice(0, -5) : source.symbol;
+      const ticker = `BINANCE:${symbol}.P`;
+      const rows = await tradingViewScan({
+        symbols: { tickers: [ticker], query: { types: [] } },
+        columns: ["close"],
+      });
+      const row = rows.find((item) => item.s === ticker);
+      const price = row?.d?.[0];
+      if (typeof price !== "string" && typeof price !== "number") throw new Error("price missing");
+      return { ok: true, price: fixed(String(price)), path: "tradingview.close" };
     }
     if (source.provider === "hyperliquid") {
       const dex = source.symbol.includes(":") ? source.symbol.split(":", 1)[0] : "";
@@ -56,8 +69,22 @@ export async function querySymbols(provider: Provider, marketType: MarketType, q
       const payload = await jsonFetch("https://api.hyperliquid.xyz/info", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "allMids" }) }) as Record<string, unknown>;
       return Object.keys(payload).filter((symbol) => symbol.toUpperCase().includes(q)).sort().slice(0, 25).map((symbol) => ({ symbol, label: symbol, provider, market_type: marketType }));
     }
-    const base = marketType === "coin_m_futures" ? "https://dapi.binance.com/dapi/v1/exchangeInfo" : "https://fapi.binance.com/fapi/v1/exchangeInfo";
-    const payload = await jsonFetch(base) as { symbols?: Array<{ symbol?: string; status?: string }> };
-    return (payload.symbols ?? []).filter((x): x is { symbol: string; status?: string } => x.status === "TRADING" && typeof x.symbol === "string" && x.symbol.includes(q)).sort((a, b) => a.symbol.localeCompare(b.symbol)).slice(0, 25).map((x) => ({ symbol: x.symbol, label: x.symbol, provider, market_type: marketType }));
+    const expectedCurrency = marketType === "coin_m_futures" ? "USD" : null;
+    const rows = await tradingViewScan({
+      filter: [
+        { left: "exchange", operation: "equal", right: "BINANCE" },
+        { left: "type", operation: "equal", right: "swap" },
+      ],
+      markets: ["crypto"],
+      columns: ["name", "currency"],
+      range: [0, 2000],
+    });
+    return rows.flatMap((row) => {
+      const [name, currency] = row.d ?? [];
+      if (typeof name !== "string" || !name.endsWith(".P")) return [];
+      if (expectedCurrency === null ? currency !== "USDT" && currency !== "USDC" : currency !== expectedCurrency) return [];
+      const symbol = `${name.slice(0, -2)}${marketType === "coin_m_futures" ? "_PERP" : ""}`;
+      return symbol.includes(q) ? [{ symbol, label: symbol, provider, market_type: marketType }] : [];
+    }).sort((a, b) => a.symbol.localeCompare(b.symbol)).slice(0, 25);
   } catch { return provider === "binance" ? [{ symbol: marketType === "usd_m_futures" && !q.endsWith("USDT") ? `${q}USDT` : q, label: marketType === "usd_m_futures" && !q.endsWith("USDT") ? `${q}USDT` : q, provider, market_type: marketType }] : []; }
 }

@@ -217,7 +217,7 @@ class BinanceFuturesAdapter:
                 identity,
                 client.mark_price(identity.symbol),
                 "markPrice",
-                "mark_price.markPrice",
+                "tradingview.close",
             )
             if mark_result is not None:
                 return mark_result
@@ -225,7 +225,7 @@ class BinanceFuturesAdapter:
                 identity,
                 client.ticker_price(identity.symbol),
                 "price",
-                "ticker_price.price",
+                "tradingview.close",
             )
         except Exception as exc:
             return _adapter_error(identity, exc)
@@ -236,8 +236,8 @@ class BinanceFuturesAdapter:
             identity.market_type,
             identity.symbol,
             AdapterErrorKind.MISSING_SYMBOL,
-            f"{identity.symbol} price was not present in Binance mark or latest ticker payloads",
-            {"paths": ["mark_price.markPrice", "ticker_price.price"]},
+            f"{identity.symbol} price was not present in TradingView's Binance quote",
+            {"paths": ["tradingview.close"]},
         )
 
     def _client_for_market(self, market_type: MarketType) -> BinanceFuturesClient:

@@ -163,6 +163,34 @@ def test_symbol_query_returns_provider_specific_realtime_options(tmp_path: Path)
         ]
     }
 
+def test_symbol_queries_reuse_default_catalog(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    # Given: the production catalog factory is lazy and expensive to initialize.
+    import wavemonitor_backend.app as app_module
+
+    catalogs: list[SymbolCatalog] = []
+
+    def fake_default_symbol_catalog() -> SymbolCatalog:
+        catalog = fake_symbol_catalog()
+        catalogs.append(catalog)
+        return catalog
+
+    monkeypatch.setattr(app_module, "default_symbol_catalog", fake_default_symbol_catalog)
+    database_url = f"sqlite:///{tmp_path / 'cached-symbols.sqlite3'}"
+    runtime = AppRuntime(settings=Settings(), database_url=database_url)
+    with TestClient(create_app(runtime)) as client:
+        first = client.get(
+            "/api/symbols/query",
+            params={"provider": "binance", "market_type": "usd_m_futures", "q": "btc"},
+        )
+        second = client.get(
+            "/api/symbols/query",
+            params={"provider": "binance", "market_type": "usd_m_futures", "q": "eth"},
+        )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert len(catalogs) == 1
+
 
 def test_symbol_query_rejects_blank_query(tmp_path: Path):
     # Given: auth is disabled.

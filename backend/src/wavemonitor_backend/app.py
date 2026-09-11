@@ -202,10 +202,11 @@ def create_app(runtime: AppRuntime | None = None) -> FastAPI:
         symbol_catalog=symbol_catalog,
     )
 
-    def resolved_symbol_catalog() -> SymbolCatalog | None:
-        if app_runtime.symbol_catalog is not None:
-            return app_runtime.symbol_catalog
-        return default_symbol_catalog()
+    def resolved_symbol_catalog() -> SymbolCatalog:
+        nonlocal symbol_catalog
+        if symbol_catalog is None:
+            symbol_catalog = default_symbol_catalog()
+        return symbol_catalog
 
     runtime_settings = app_runtime.settings
     metrics_store = app_runtime.metrics_store

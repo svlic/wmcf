@@ -1,16 +1,19 @@
 from __future__ import annotations
 
-import os
+import json
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Final, Protocol
+from urllib.request import Request, urlopen
 
 from wavemonitor_backend.adapter_types import BinanceFuturesClient, HyperliquidInfoClient
 from wavemonitor_backend.models import MarketType, Provider
 
 SYMBOL_QUERY_MAX_RESULTS: Final[int] = 25
-BINANCE_HTTPS_PROXY_ENV: Final[str] = "BINANCE_HTTPS_PROXY"
-BINANCE_TIMEOUT_SECONDS: Final[int] = 5
+TRADINGVIEW_SCANNER_URL: Final[str] = "https://scanner.tradingview.com/crypto/scan"
+TRADINGVIEW_TIMEOUT_SECONDS: Final[int] = 5
+YFINANCE_TIMEOUT_SECONDS: Final[int] = 5
+HYPERLIQUID_TIMEOUT_SECONDS: Final[int] = 5
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +26,77 @@ class SymbolOption:
 
 class BinanceExchangeListing(BinanceFuturesClient, Protocol):
     def exchange_info(self) -> dict[str, object]: ...
+
+
+class TradingViewBinanceClient:
+    def __init__(self, market_type: MarketType) -> None:
+        self._market_type = market_type
+
+    def mark_price(self, symbol: str) -> dict[str, object]:
+        rows = self._scan(
+            {
+                "symbols": {"tickers": [self._ticker(symbol)], "query": {"types": []}},
+                "columns": ["close"],
+            }
+        )
+        if not rows:
+            return {}
+        values = rows[0].get("d")
+        price = values[0] if isinstance(values, list) and values else None
+        return {"symbol": symbol, "markPrice": price}
+
+    def ticker_price(self, symbol: str) -> dict[str, object]:
+        quote = self.mark_price(symbol)
+        return {"symbol": symbol, "price": quote.get("markPrice")}
+
+    def exchange_info(self) -> dict[str, object]:
+        rows = self._scan(
+            {
+                "filter": [
+                    {"left": "exchange", "operation": "equal", "right": "BINANCE"},
+                    {"left": "type", "operation": "equal", "right": "swap"},
+                ],
+                "markets": ["crypto"],
+                "columns": ["name", "currency"],
+                "range": [0, 2000],
+            }
+        )
+        symbols: list[dict[str, object]] = []
+        for row in rows:
+            values = row.get("d")
+            if not isinstance(values, list) or len(values) < 2:
+                continue
+            name, currency = values[:2]
+            if not isinstance(name, str) or not name.endswith(".P"):
+                continue
+            symbol = name.removesuffix(".P")
+            if self._market_type is MarketType.USD_M_FUTURES:
+                if currency not in {"USDT", "USDC"}:
+                    continue
+            else:
+                if currency != "USD":
+                    continue
+                symbol = f"{symbol}_PERP"
+            symbols.append({"symbol": symbol, "status": "TRADING"})
+        return {"symbols": symbols}
+
+    def _ticker(self, symbol: str) -> str:
+        normalized = symbol.removesuffix("_PERP")
+        return f"BINANCE:{normalized}.P"
+
+    def _scan(self, payload: dict[str, object]) -> list[dict[str, object]]:
+        request = Request(
+            TRADINGVIEW_SCANNER_URL,
+            data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urlopen(request, timeout=TRADINGVIEW_TIMEOUT_SECONDS) as response:  # noqa: S310
+            result = json.load(response)
+        rows = result.get("data") if isinstance(result, dict) else None
+        if not isinstance(rows, list):
+            raise RuntimeError("TradingView scanner response data is not a list")
+        return [row for row in rows if isinstance(row, dict)]
 
 
 YFinanceSearchFactory = Callable[[str, int], list[SymbolOption]]
@@ -229,13 +303,19 @@ def _hyperliquid_asset_names(entries: list[object]) -> list[str]:
 
 
 def _default_yfinance_search(query: str, limit: int) -> list[SymbolOption]:
-
     import yfinance as yf
 
     try:
-        quotes = yf.Search(query, max_results=limit).quotes
+        quotes = yf.Search(
+            query,
+            max_results=limit,
+            news_count=0,
+            lists_count=0,
+            include_cb=False,
+            timeout=YFINANCE_TIMEOUT_SECONDS,
+        ).quotes
     except Exception:
-        return []
+        return _yfinance_exact_fallback(query)
     options: list[SymbolOption] = []
     for quote in quotes:
         if not isinstance(quote, dict):
@@ -254,18 +334,28 @@ def _default_yfinance_search(query: str, limit: int) -> list[SymbolOption]:
                 market_type=MarketType.EQUITY,
             )
         )
-    return options[:limit]
+    return options[:limit] or _yfinance_exact_fallback(query)
+
+
+def _yfinance_exact_fallback(query: str) -> list[SymbolOption]:
+    valid_characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-^="
+    if not query or any(character not in valid_characters for character in query):
+        return []
+    return [
+        SymbolOption(
+            symbol=query,
+            label=query,
+            provider=Provider.YFINANCE,
+            market_type=MarketType.EQUITY,
+        )
+    ]
 
 
 def default_binance_futures_clients() -> tuple[BinanceExchangeListing, BinanceExchangeListing]:
-    from binance.cm_futures import CMFutures
-    from binance.um_futures import UMFutures
-
-    kwargs: dict[str, object] = {"timeout": BINANCE_TIMEOUT_SECONDS}
-    proxy = os.getenv(BINANCE_HTTPS_PROXY_ENV, "").strip()
-    if proxy:
-        kwargs["proxies"] = {"https": proxy}
-    return UMFutures(**kwargs), CMFutures(**kwargs)
+    return (
+        TradingViewBinanceClient(MarketType.USD_M_FUTURES),
+        TradingViewBinanceClient(MarketType.COIN_M_FUTURES),
+    )
 
 
 def default_symbol_catalog() -> SymbolCatalog:
@@ -275,5 +365,5 @@ def default_symbol_catalog() -> SymbolCatalog:
     return SymbolCatalog(
         usd_m_client=usd_m,
         coin_m_client=coin_m,
-        hyperliquid_client=Info(),
+        hyperliquid_client=Info(skip_ws=True, timeout=HYPERLIQUID_TIMEOUT_SECONDS),
     )

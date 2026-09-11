@@ -233,7 +233,7 @@ export function InstrumentForm({ initialData, onSubmit, onCancel }: Props) {
                 onChange={e => updateMapping(i, "provider", e.target.value)}
               >
                 <option value="yfinance">Yahoo Finance</option>
-                <option value="binance">Binance</option>
+                <option value="binance">Binance（TradingView 数据）</option>
                 <option value="hyperliquid">Hyperliquid</option>
               </select>
             </div>
